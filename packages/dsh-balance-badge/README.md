@@ -1,84 +1,78 @@
 # dsh-balance-badge
 
-在 DeepSeek Harness 左侧栏底部（「设置」上方）常驻显示 DeepSeek 账户余额的客户端插件。
+English | [中文](README.zh-CN.md)
+
+A client plugin for DeepSeek Harness that keeps your DeepSeek account balance permanently visible at the foot of the left sidebar, just above **Settings**.
 
 ```
-余额   ¥123.45
+Balance   ¥123.45
 ```
 
-鼠标悬停可看到充值余额与赠金余额的明细，点击可立即刷新。
+Hover for the topped-up and granted amounts broken out; click to refresh immediately.
 
-## 它显示什么
+## What it shows
 
-| 状态 | 显示 |
+| State | Display |
 |---|---|
-| 查询成功 | 充值余额；若还有赠金，明细里单独列出 |
-| 未登录 | `未登录` |
-| 查询失败 | `余额不可用` |
-| 查询中 | `查询中…` |
+| Loaded | the topped-up balance; granted credit is listed separately in the hover detail when there is any |
+| Signed out | `Not signed in` |
+| Query failed | `Balance unavailable` |
+| Loading | `Checking…` |
 
-金额沿用开放平台网页的格式：两位小数、千分位分组、正数截断到分，不足一分的正数显示为 `<0.01`。
+Amounts use the same formatting as the DeepSeek platform web UI: two decimals, thousands separators, positive amounts truncated to cents, and positive sub-cent amounts shown as `<0.01`.
 
-刷新时机：挂载时读一次，之后每 60 秒一次，窗口重新获得焦点时一次，点击时一次。
+When it refreshes: once on mount, then every 60 seconds, whenever the window regains focus, and on every click.
 
-## 数据来源
+## Where the number comes from
 
-余额来自 DeepSeek **平台账号**（你登录 Harness 时授权的那个账号），不是 API Key。
-插件在浏览器侧调用 Harness 已有的账户接口：
+The balance belongs to your DeepSeek **platform account** — the account you signed in with inside Harness — not to an API key. The plugin calls the account Remote that Harness already exposes:
 
 ```js
 ctx.remote.account.getBalance({ version, locale, timezoneOffsetSeconds })
 // => { ok: true, value: null | { status: 'ready', value: [...], bonusWallets: [...] } | { status: 'failed' } }
 ```
 
-因此它和「设置 → 账号与余额」显示的是同一份数据；未登录时两者都会提示登录。
-如果这里显示「未登录」，请先到「设置 → 账号与余额」登录一次。
+So it shows exactly the same figure as **Settings → Account**, and both prompt you to sign in when you are not. If this badge reads `Not signed in`, sign in once from that settings page.
 
-## 界面位置
+## Where it sits
 
-挂在侧边栏声明的 `sidebar.footer.action` 列表插槽上（`ui-sidebar` 声明，类型 `list`、作用域 `root`），
-这是 DSH 为「设置旁边的可选操作」预留的席位。
+It registers into the `sidebar.footer.action` list slot (declared by `ui-sidebar`, kind `list`, scope `root`) — the seat Harness reserves for optional actions beside Settings.
 
-注意：Windows 桌面版的侧边栏**收起**为图标栏时，DSH 会把整个底部区域隐藏
-（`[data-windows-titlebar] .collapsed .footArea { display: none }`），
-此时包括「设置」入口在内的底部内容都不显示，本徽章同理。展开侧边栏即可看到。
+One caveat: on Windows desktop, collapsing the sidebar to the icon rail hides the whole foot area (`[data-windows-titlebar] .collapsed .footArea { display: none }`), which takes the Settings entry with it. The badge behaves the same way. Expand the sidebar and it is back.
 
-## 文件
+## Files
 
-| 文件 | 作用 |
+| File | Role |
 |---|---|
-| `package.json` | 声明 `dsh.bundle`（补丁层）与 `dsh.client`（浏览器半边） |
-| `cordis.patch.yml` | 给 Host 的 Loader 插入一行 `balance-badge` |
-| `lib/index.js` | Host 半边：空实现，只为让浏览器模块系统扫描到本包 |
-| `lib/client.js` | 浏览器半边：`window.__ModuleLoader__.load({ id, factory })` 包裹的界面本体 |
-| `docs/` | 调研 DSH 插件与插槽机制时整理的参考文档 |
-| `tests/client.test.mjs` | 桩 React 单元测试（19 项）：模块包裹、注册、四种状态渲染 |
+| `package.json` | declares `dsh.bundle` (a patch layer) and `dsh.client` (a browser half) |
+| `cordis.patch.yml` | inserts one `balance-badge` row into the Host Loader |
+| `lib/index.js` | host half: an empty `apply`, present only so the browser module system finds the package |
+| `lib/client.js` | browser half: the UI itself, wrapped in `window.__ModuleLoader__.load({ id, factory })` |
+| `tests/client.test.mjs` | 19 unit checks against a stub React: module wrapper, registration, all four render states |
+| `../../docs/` | reference notes on the DSH plugin and slot systems, at the repository root |
 
-跑测试（用 DSH 自带的 node）：
+Run the tests (no dependencies, Node 18+; the Node bundled with DSH works too):
 
-```powershell
-& "D:\deepseek\resources\runtime\bin\node.cmd" "<仓库路径>/packages/dsh-balance-badge\tests\client.test.mjs"
+```bash
+node tests/client.test.mjs
 ```
 
-`lib/client.js` 是手工编写而非构建产物，所以没有 `lib/types/*.d.ts`，也没有 sourcemap。
+`lib/client.js` is hand-written rather than a build artifact, so there is no `lib/types/*.d.ts` and no source map.
 
-## 安装 / 卸载
+## Install / remove
 
-安装（本机已装好，此处留档）：
-
-```powershell
-& "D:\deepseek\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add "<仓库路径>/packages/dsh-balance-badge"
-```
-
-这会把本目录以 `link:` 方式加进 `~/.dsh/profiles/desktop`，
-并把 `dsh-balance-badge` 追加到 `dsh.profile.bundles`。
-因为用的是软链，**移动本目录会让插件失效**。
-
-卸载：
+Install (already done on the machine this was developed on; kept here for reference):
 
 ```powershell
-& "D:\deepseek\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop remove dsh-balance-badge
+dsh plugin --profile desktop add "<repo>\packages\dsh-balance-badge"
 ```
 
-安装/卸载后需要让 Harness 重新组合配置：重启应用，或在应用内「插件」页面里开关一次本插件。
-（运行中的应用不会因为 profile 文件被外部改动而自动重载。）
+That adds this directory to `~/.dsh/profiles/desktop` as a `link:` dependency and appends `dsh-balance-badge` to `dsh.profile.bundles`. Because it is a symlink, **moving this directory breaks the plugin**.
+
+Remove:
+
+```powershell
+dsh plugin --profile desktop remove dsh-balance-badge
+```
+
+After installing or removing, let Harness recompose: restart the app, or toggle this plugin once on the in-app **Plugins** page. A running app does not reload when profile files are changed from outside.

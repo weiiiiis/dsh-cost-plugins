@@ -1,296 +1,254 @@
 # dsh-turn-cost
 
-在**每条回答的页脚**显示这一轮对话花了多少钱。
+English | [中文](README.zh-CN.md)
+
+Shows what each answer cost, in the footer of that answer.
 
 ```
-… 回答正文 …
+… answer …
 
-        花费 ¥0.0066   [本轮用量 51.9K tok]   14:32
-        ↑ 本插件                ↑ DSH 自带
+        Cost ¥0.0066   [ turn usage 51.9K tok ]   14:32
+        ↑ this plugin           ↑ built into Harness
 ```
 
-鼠标悬停在金额上，会展开这一轮的四档 token 明细、实际使用的模型，以及当时的单价档位。
+Hover the amount for the turn's four token buckets, the input/output split, the model that actually ran, the price tier in force, where the turn sits against the session median, the cache hit rate, and a per-step breakdown.
 
-## 它显示什么
+## What it shows
 
-金额按 DeepSeek 开放平台的公开单价，由该轮的 token 用量换算而来：
+The amount is the turn's token usage converted at DeepSeek's published rates:
 
 ```
-花费 = 缓存命中输入 × 命中价
-     + (未缓存输入 + 缓存写入) × 未命中价
-     + 输出 × 输出价
+cost = cache-hit input × hit price
+     + (uncached input + cache write) × miss price
+     + output × output price
 ```
 
-数据直接取自该轮会话事件里**提供方自己上报的用量**（`assistant/message` 上的 `usage`，
-或结算流里最后一个 `usage` 分片），不是估算的字符数。模型名也来自消息自带的 route，
-因此换模型不需要改配置。
+The counts come from **the usage the provider itself reports** in the turn's session events — `usage` on the `assistant/message` event, or the last `usage` chunk in the settlement stream. They are not a character-count estimate. The model name comes from the message's own route, so switching models needs no configuration.
 
-### 价格表
+### Price table
 
-内置 `deepseek-flash` 与 `deepseek-v4-pro` 两档，单位「元 / 百万 token」：
+Built in for `deepseek-flash` and `deepseek-v4-pro`, in CNY per million tokens:
 
-| 模型 | 时段 | 缓存命中 | 未命中 | 输出 |
+| Model | Window | Cache hit | Cache miss | Output |
 |---|---|---|---|---|
-| deepseek-flash | 空闲 | 0.02 | 1 | 4 |
-| deepseek-flash | 高峰 | 0.04 | 2 | 8 |
-| deepseek-v4-pro | 空闲 | 0.15 | 4.5 | 13.5 |
-| deepseek-v4-pro | 高峰 | 0.30 | 9 | 27 |
+| deepseek-flash | Off-peak | 0.02 | 1 | 4 |
+| deepseek-flash | Peak | 0.04 | 2 | 8 |
+| deepseek-v4-pro | Off-peak | 0.15 | 4.5 | 13.5 |
+| deepseek-v4-pro | Peak | 0.30 | 9 | 27 |
 
-来源：<https://api-docs.deepseek.com/zh-cn/quick_start/pricing/>。
-价格调整时改 `lib/client.js` 里的 `PRICING` 常量即可。
+Source: <https://api-docs.deepseek.com/quick_start/pricing/>. When prices change, edit the `PRICING` constant at the top of `lib/client.js`.
 
-官方输入价只有「缓存命中 / 未命中」两档，缓存写入按未命中价计费，所以 `cacheMiss`
-同时承担未缓存输入与缓存写入。
+DeepSeek's input price has only two tiers — cache hit and cache miss — and cache writes are billed at the miss price, so `cacheMiss` covers both uncached input and cache writes.
 
-**高峰时段**：北京时间周一至周五 9:00–12:00、14:00–18:00；其余（含周末与法定节假日全天）
-为空闲。中国法定节假日无法离线判断，插件只按星期与小时算，所以法定节假日里的那几个小时
-会按高峰价显示（偏保守，不会少算）。
+**Peak hours** are Beijing time, Monday to Friday, 09:00–12:00 and 14:00–18:00; everything else (including all weekend) is off-peak. Chinese public holidays can't be determined offline, so the plugin tests weekday and hour only. Hours inside a public holiday are therefore shown at the peak rate — conservative, it never under-counts.
 
-认不出的模型按 `deepseek-flash` 高峰价兜底，宁可略高估也不低估。
+An unrecognised model falls back to `deepseek-flash` peak rates: better to over-estimate than under.
 
-**跨高峰边界按步计价**：一轮如果从空闲时段跨进高峰时段（比如 11:58 开始、12:03 结束），
-整轮金额按各步各自的时间分别计价再相加，而不是拿收尾时间一刀切。悬停明细里会标明
-「跨高峰/空闲，按各步计价」。只有当分步覆盖到与整轮同一批 token 时才这么算——重试会让
-两者不等，那就退回整轮价，宁可用一个确定的数。
+**Turns that cross the peak boundary are priced per step.** If a turn starts off-peak and finishes peak (11:58 → 12:03, say), each step is priced at the rate in force when it ran and the amounts are summed, rather than pricing the whole turn at whatever rate the last message landed in. The hover detail says so explicitly. This is only used when the step breakdown covers exactly the same tokens as the whole-turn fold — retries make the two disagree, and then the plugin falls back to whole-turn pricing rather than guess.
 
-## 点击放大
+## Click to enlarge
 
-页脚那行字号小，**点一下金额就放大**（1.6 倍并加粗），再点一次还原。
+The footer type is small, so **clicking the amount enlarges it** (1.6× and bold); click again to restore.
 
-放大是**全局的**：点任意一条，所有回答的花费一起变大——不然每条都要点一次就没法用了。
-偏好记在浏览器本地（`localStorage`，键 `dsh-turn-cost.enlarged.v1`），刷新和重开都还在。
+Enlarging is **global**: click any one and every answer's amount grows, because clicking each of them individually would be useless. The preference is stored in the browser (`localStorage`, key `dsh-turn-cost.enlarged.v1`) and survives reloads.
 
-键盘也能用：金额可聚焦，回车或空格切换。悬停提示里会写明当前是「点击放大」还是「点击还原」。
+Keyboard works too: the amount is focusable, and Enter or Space toggles it. The tooltip says which way the click will go.
 
-## 好贵弹幕
+## The "so expensive" danmaku
 
-一轮花到 **¥1 以上**，屏幕上飞过一整屏弹幕，从右往左飘，行高、字号、时长、颜色都错开。
-条数**随金额增长**：`¥1 → 24 条`，`¥4 → 48 条`（封顶）。
+Cross **¥1** in a single turn and a full-screen barrage flies across the window, right to left, with staggered rows, sizes, durations and colours. The count **scales with the amount**: `¥1 → 24`, `¥4 → 48` (capped).
 
-| 行为 | 说明 |
+| Behaviour | Why |
 |---|---|
-| 只在「新完成且过线」的轮次触发 | 第一次打开会话时只登记历史、不播报，否则一进页面就被几十条弹幕糊住 |
-| 刷新历史最高价时换文案 | 「破纪录了！¥4.00」；历史最高价不会被当成新纪录 |
-| 冷却 30 秒 | 连续几轮都贵时不会连着炸；预算告警不受冷却限制 |
-| 提示音 | 用 `AudioContext` 现场合成两个短音，不需要音频文件；失败就安静 |
-| 整层 `pointer-events: none` | 弹幕再密也不挡操作（浮层直接子元素默认会被设成可点击，这里显式覆盖） |
-| 对读屏软件隐藏 | `aria-hidden="true"`；系统开了「减少动态效果」时直接不放 |
+| Only fires for a newly completed turn over the threshold | The first time you open a session it only registers the history, otherwise you'd be buried under dozens of danmaku on page load |
+| Different copy for a new record | "New record! ¥4.00"; the existing high score is never reported as a new one |
+| 30-second cooldown | Several expensive turns in a row won't machine-gun the screen; budget alerts ignore the cooldown |
+| A chime | Two short tones synthesised with `AudioContext`, no audio files; stays silent if it fails |
+| The whole layer is `pointer-events: none` | However dense it gets, it never blocks a click (the overlay's direct children default to clickable, which is explicitly overridden here) |
+| Hidden from screen readers | `aria-hidden="true"`; and nothing plays at all under `prefers-reduced-motion` |
 
-渲染在 `shell.overlay`——DSH 给全屏浮层留的根作用域顶层，所以能真正铺满屏，
-代价是会盖在弹窗之下（浮层 z-index 20，弹窗 1000+），这是插槽系统定死的。
+It renders into `shell.overlay` — the root-scope layer Harness reserves for full-screen overlays — which is why it can genuinely fill the screen. The trade-off is that it sits *under* modals (the overlay layer is z-index 20, modals are 1000+); that ordering is fixed by the slot system.
 
-调参都在 `lib/client.js` 顶部：`DANMAKU_COST`（门槛）、`DANMAKU_MIN` / `DANMAKU_MAX`（条数
-区间）、`DANMAKU_COOLDOWN_MS`（冷却）、`DANMAKU_SOUND`（提示音开关）。
+Knobs live at the top of `lib/client.js`: `DANMAKU_COST` (threshold), `DANMAKU_MIN` / `DANMAKU_MAX` (count range), `DANMAKU_COOLDOWN_MS` (cooldown), `DANMAKU_SOUND` (chime on/off).
 
-## 输入框下方那一行
+## The line under the composer
 
-汇总单独占一行，落在 DSH 自己的统计胶囊**下面**，字号比上面那行**小一档**
-（都以 DSH 的 `--dsh-content-font-size-secondary` 为基准，所以在设置里调「内容字号」时
-两行会一起缩放，只是这一行始终小 2px）：
+The summary gets **its own row, below Harness's own stats pills**, and one type step smaller than that row (both are based on Harness's `--dsh-content-font-size-secondary`, so changing the content font size in settings scales both — this line stays 2px smaller):
 
 ```
-        [统计胶囊]  [上下文占用]
+        [stats pills]  [context meter]
 
-本次会话 ¥3.40（6 轮） · 今日 ¥3.40 · 近 7 天 ¥12.40 · 缓存命中 99.7%
-  · 上下文 243.0k · 下一轮预计 ¥0.14~1.02 · 还能跑约 35 轮
+This session ¥3.40 (6 turns) · Today ¥3.40 · Last 7 days ¥12.40 · cache hit 99.7%
+  · context 243.0k · next turn est. ¥0.14~1.02 · about 35 turns left
 ```
 
-点这一行循环切换日预算档位。
+Click the line to cycle the daily budget.
 
-**怎么做到独占一行**：那是个不换行的横向 flex 容器（`gap:12px`、`justify-content:center`），
-所以插件注入了一条样式把容器打开换行，自己那一项再用 `flex:0 0 100%` + `order:1` 落到下一行：
+**How it gets its own row**: that dock is a non-wrapping horizontal flex container (`gap: 12px`, `justify-content: center`), so the plugin injects one rule to let the container wrap, and its own item uses `flex: 0 0 100%` + `order: 1` to land on the next row:
 
 ```css
 [class*="_dock"]:has([data-turn-cost-summary]) { flex-wrap: wrap }
 ```
 
-选择器不依赖哈希类名：`[class*="_dock"]` 用的是 CSS Module 的稳定后缀 `_dock`，
-`:has(...)` 再限定成「包含汇总的那一个」，不会误伤别处。
+The selector doesn't depend on a hashed class name: `[class*="_dock"]` uses the stable CSS Module suffix `_dock`, and `:has(...)` narrows it to the one containing the summary.
 
-**字号**：`calc(var(--dsh-content-font-size-secondary, 13px) - 2px)`（行高同步减 2px），
-比 DSH 统计行小一档。嫌不够小就改 `lib/client.js` 里的 `SUMMARY_FONT_STEP`，改一个数即可。
+**Type size**: `calc(var(--dsh-content-font-size-secondary, 13px) - 2px)`, with the line height reduced by the same 2px. Want it smaller still? Change the single `SUMMARY_FONT_STEP` constant in `lib/client.js`.
 
-| 段 | 含义 |
+| Segment | Meaning |
 |---|---|
-| 本次会话 / 今日 / 近 7 天 | 金额与轮数；今日与近 7 天来自浏览器本地账本 |
-| 缓存命中 | 整个会话的缓存读取 ÷ 全部输入 token。命中价差 50 倍，这个数掉了就是钱在漏 |
-| 上下文 | 来自 `contextPressure` 投影，下一轮请求要重新过一遍的量 |
-| 下一轮预计 | 用本会话已计价轮次的最低/最高价给区间，不是猜的 |
-| 还能跑约 N 轮 | 账户余额 ÷ 本会话平均单轮花费（余额读不到就不显示这段） |
+| This session / Today / Last 7 days | amount and turn count; today and the last 7 days come from the browser-local ledger |
+| cache hit | cache reads ÷ all input tokens, across the session. A hit costs 50× less than a miss, so when this drops, money is leaking |
+| context | from the `contextPressure` projection — what the next request has to walk through again |
+| next turn est. | a range built from the cheapest and dearest already-priced turns in this session, not a guess |
+| about N turns left | account balance ÷ this session's average cost per turn (the segment is omitted when the balance can't be read) |
 
-## 日预算
+## Daily budget
 
-点这一行循环切换档位：`关 → ¥5 → ¥10 → ¥20 → ¥50 → ¥100 → 关`，存在浏览器本地。
+Click the line to cycle: `off → ¥5 → ¥10 → ¥20 → ¥50 → ¥100 → off`, stored in the browser.
 
-- 用到 **80%** 变黄（主题警告色），**超出**变红并写明「今日已超预算」
-- 超出当天第一次会放一批弹幕提醒（不受 30 秒冷却限制），一天只提醒一次
-- 不设档位就只有「今日 ¥X」，没有比例与颜色
+- At **80%** the line turns amber (the theme's warn colour); **over budget** it turns red and says so.
+- The first time you go over on a given day, a danmaku barrage fires (ignoring the 30-second cooldown). Once per day.
+- With no tier selected you just get `Today ¥X`, with no ratio and no colour.
 
-> 为什么是循环档位而不是输入框：Electron 里没有 `window.prompt`，为这个再做一页设置
-> 不划算。要精确数值可以直接改 `BUDGET_STEPS`。
+> Why cycle tiers instead of a text field: Electron has no `window.prompt`, and building a settings
+> page for this one number isn't worth it. For an exact figure, edit `BUDGET_STEPS`.
 
-## 分级配色
+## Cost tiers
 
-花得多的时候金额会变色，用的 DSH 主题语义色，浅色/深色主题都跟着走：
+Expensive turns change colour, using Harness's theme-aware semantic colours so light and dark both work:
 
-| 档位 | 触发 | 表现 |
+| Tier | Trigger | Rendering |
 |---|---|---|
-| 普通 | 默认 | 沿用父级颜色，不加装饰 |
-| 警告 | 本轮 ≥ ¥0.50，**或** ≥ 本会话中位数的 3 倍 | `--dsw-alias-state-warn-primary` |
-| 危险 | 本轮 ≥ ¥3.00，**或**已被警告档再被相对规则抬一档 | `--dsw-alias-state-error-primary` + 加粗 |
+| Normal | default | inherits the parent colour, no decoration |
+| Warn | this turn ≥ ¥0.50, **or** ≥ 3× the session median | `--dsw-alias-state-warn-primary` |
+| Alert | this turn ≥ ¥3.00, **or** the warn tier bumped once more by the relative rule | `--dsw-alias-state-error-primary`, plus bold |
 
-**为什么是两条信号叠加**：只用一个金额阈值会很难用——写代码的一轮动辄几十次工具调用，
-聊两句的一轮几乎不花钱，同一个阈值对两种场景都没意义。所以：
+**Why two signals rather than one threshold**: a single amount threshold is unusable here — a coding turn with dozens of tool calls and a two-line chat turn differ by orders of magnitude, so no one number means anything in both cases. So:
 
-- **绝对**回答「这一轮是不是真的贵」，跨场景可比；
-- **相对**（≥ 本会话中位数的 3 倍）回答「这一轮是不是比我平时贵得多」，自适应你的用法。
+- **absolute** answers "is this turn genuinely expensive?", comparable across sessions;
+- **relative** (≥ 3× the session median) answers "is this much more than I usually spend?", adapting to how you actually work.
 
-相对判定需要至少 4 轮样本才生效，避免刚开始就拿自己跟自己比。两条都不满足就不着色，
-不制造彩虹。颜色之外危险档还加粗，不单靠颜色传达信息。
+The relative rule needs at least 4 samples before it applies, so a fresh session never compares you against yourself. When neither signal fires, nothing is coloured — no rainbow. And the alert tier also goes bold, so colour is never the only carrier of meaning.
 
-### 阈值是怎么定的
+### How the thresholds were chosen
 
-按**真实用量**标定，不是拍脑袋：本机一个长会话里单轮实际在 **¥0.15 ~ ¥1.02** 之间
-（上下文二十多万 token、缓存命中 98% 以上）。阈值定得太低会让每一轮都变红，颜色就
-失去信息量，所以取了偏保守的 ¥0.50 / ¥3.00——到这个数才说明这一轮真的花了钱。
+They were calibrated against **real usage**, not guessed: on the machine this was written on, a long session's turns ran **¥0.15 – ¥1.02** each (context around 250k tokens, cache hit rate above 98%). A threshold set too low turns every turn red and the colour stops carrying information, so the conservative ¥0.50 / ¥3.00 was chosen — reaching it means the turn actually cost money.
 
-四个常量都在 `lib/client.js` 顶部（`WARN_COST` / `ALERT_COST` / `OUTLIER_RATIO` /
-`OUTLIER_MIN_TURNS`），按自己的用量改即可。
+All four constants sit at the top of `lib/client.js` (`WARN_COST` / `ALERT_COST` / `OUTLIER_RATIO` / `OUTLIER_MIN_TURNS`). Retune them to your own usage.
 
-## 缓存命中提示
+## Cache hit warning
 
-缓存未命中的输入单价是命中价的 **50 倍**（flash 空闲档 ¥1 vs ¥0.02），一轮贵往往不是
-输出多，而是上下文没命中缓存。所以命中率偏低且多花的钱够多（默认 ≥ ¥0.02）时，金额旁
-会多一个 `↓12%` 的标记，悬停写明「这些未命中比全部命中多花 ¥X」。
+A cache-miss input token costs **50×** a cache hit (¥1 vs ¥0.02 off-peak on flash), and an expensive turn is usually not one with a long answer — it's one whose context missed the cache. So when the hit rate is low *and* the money that wasted is material (default ≥ ¥0.02), the amount gains a `↓12%` marker, and the tooltip spells out how much those misses cost versus a full hit.
 
-命中率正常时不会有任何标记——实测缓存命中率通常在 98% 以上，这个提示只在真的出问题时
-才出现。
+When the hit rate is healthy there is no marker at all — real sessions sit above 98%, so this only appears when something is actually wrong.
 
-## 分步拆解
+## Per-step breakdown
 
-悬停明细里按**花费从大到小**列出每一步：`第 2 步 ¥0.0520 · read`、`第 1 步 ¥0.0014 · pwsh ×2`。
-最多列 5 步，其余折叠成一行。
+The hover detail lists each step **dearest first**: `Step 2 ¥0.0520 · read`, `Step 1 ¥0.0014 · pwsh ×2`. Up to 5 steps; the rest collapse into one line.
 
-这样能直接回答「钱花在哪」：某一步特别贵，通常就是那一步把上下文撑大了，或者某个工具
-返回了巨大结果导致后续全量重算。
+That answers "where did the money go" directly: a step that stands out is usually the one that grew the context, or a tool that returned something huge and forced a full re-read afterwards.
 
-> 每一步的花费取该步内模型请求自己上报的用量。严格整轮折叠还会处理重试，所以分步之和
-> 与整轮数字可能有细微差别（重试部分），这是预期的。
+> Each step's amount comes from the usage the model reported for that step's requests. The strict
+> whole-turn fold also accounts for retries, so the step amounts can differ slightly from the turn
+> total. That is expected.
 
-## 花费历史面板
+## Spend-history panel
 
-左侧栏多一个柱状图图标（排在 DSH 自带的「插件」「定时任务」之后），点开是中间栏整页：
+The sidebar gains a bar-chart icon (after Harness's own Plugins and Schedules); it opens a full page in the centre column:
 
 ```
-花费历史                                    按 token 单价估算，不是账单   [导出 CSV] [刷新]
+Cost history                          Estimated from token prices, not a bill   [Export CSV] [Refresh]
 
-今日 ¥3.40 · 近 7 天 ¥12.40 · 累计 ¥47.20
+Today ¥3.40 · last 7 days ¥12.40 · all time ¥47.20
 
-按天            日期              轮数    金额
-                2026-10-06          6    ¥3.40
-                2026-10-05         14    ¥7.10
-                …
+By day            Date              Turns   Amount
+                  2026-10-06            6    ¥3.40
+                  2026-10-05           14    ¥7.10
+                  …
 
-按会话（前 20）  会话              轮数    金额
-                c80faa41            6    ¥3.40
-                …
+By session (top 20)  Session        Turns   Amount
+                  c80faa41              6    ¥3.40
+                  …
 ```
 
-导出的是带 BOM 的 CSV（Excel 直接打开不乱码），分「日期/金额/轮数」与「会话/金额/轮数」两段。
+The export is a BOM-prefixed CSV (opens cleanly in Excel), with a date/amount/turns section and a session/amount/turns section.
 
-实现要点（都是实测出来的约束）：
+Implementation notes, all constraints discovered the hard way:
 
-- `main` 是 **keyed** 插槽，注册要用 `key`；`sidebar.panellist` 是 **list** 插槽，注册要用 `id`
-  ——**两者必须是同一个字符串**，否则点图标会抛 `layout.selectPanel: main panel "x" is not registered`。
-- 面板 id 用 `turn-cost-history`，避开保留的 `conversation` 与自带的 `plugins` / `schedules`
-  （同优先级重名会直接抛错）。
-- **图标组件本身就是那个字形**，侧边栏不提供兜底图标：不画就是一个 36×36 的空按钮。
-  这里的字形是内联 SVG 柱状图，不依赖任何 UI 组件包。
-- `main` 是 **root 作用域**，拿不到 `sessionId` / `useChat`；面板也不需要——它只读本地账本。
-- 布局**不给内边距也不给滚动容器**，所以页面根元素自己撑 `height:100%` 并自带 `overflow:auto`。
-- 切走再切回来页面会**重新挂载**（状态丢失），所以数据每次从账本现读，不放在组件状态里。
+- `main` is a **keyed** slot, so registration uses `key`; `sidebar.panellist` is a **list** slot, so it uses `id` — and **the two must be the same string**, otherwise clicking the icon throws `layout.selectPanel: main panel "x" is not registered`.
+- The panel id is `turn-cost-history`, avoiding the reserved `conversation` and the shipped `plugins` / `schedules` (a duplicate at the same priority throws).
+- **The registered component *is* the glyph** — the sidebar provides no fallback icon, so not drawing one leaves an empty 36×36 button. This one is an inline SVG bar chart, with no dependency on any UI package.
+- `main` is **root scope**: no `sessionId`, no `useChat`. The panel doesn't need them — it only reads the local ledger.
+- The layout gives you **no padding and no scroll container**, so the page's root element owns `height: 100%` and its own `overflow: auto`.
+- Switching away and back **remounts** the page (local state is lost), which is why the data is re-read from the ledger on every render instead of held in component state.
 
-## 账本
+## The ledger
 
-今日与近 7 天记在浏览器本地（`localStorage`，键 `dsh-turn-cost.ledger.v1`），跨会话、
-跨刷新都在。每条轮次按 `<sessionId>:<messageId>` 去重，同一轮的花费若因重试变化，先把
-旧值扣掉再加新值，不会重复累加。账本保留 60 天，超期自动清理。
+Today and the last 7 days are recorded in the browser (`localStorage`, key `dsh-turn-cost.ledger.v1`) and survive across sessions and reloads. Turns are de-duplicated by `<sessionId>:<messageId>`, and if a turn's cost changes (a retry), the old value is subtracted before the new one is added — it never accumulates twice. The ledger keeps 60 days and prunes itself.
 
-本地存储不可用时（隐私模式等）会退化成只在本次会话内累计，不影响其他功能。
+When local storage is unavailable (private mode, say), it degrades to accumulating within the current session only; nothing else breaks.
 
-## 金额格式
+## Amount formatting
 
-- 一元以上保留两位：`¥1.23`
-- 不足一元保留四位、至少两位：`¥0.0066`、`¥0.50`
-- 不足 `¥0.0001` 显示 `<¥0.0001`
+- One yuan and up: two decimals — `¥1.23`
+- Under one yuan: four decimals, at least two — `¥0.0066`, `¥0.50`
+- Under `¥0.0001`: `<¥0.0001`
 
-## 显示位置与归属规则
+## Placement and attribution rules
 
-挂在 `conversation.chat.assistant-actions`（`ui-chat` 声明的 list 插槽，session 作用域）
-——也就是 DSH 自己放「本轮用量」和时钟的那一行页脚。
+It registers into `conversation.chat.assistant-actions` (a `list` slot declared by `ui-chat`, session scope) — the same footer row where Harness puts its own turn-usage pill and the clock.
 
-一个 turn 可能包含多个 step（工具调用往返），每一步都有一条 assistant 消息，但对话页脚
-只挂在**收尾那条**上。插件同样把整轮花费记到该轮最后一条带 id 的 assistant 消息上，
-中间步骤不显示金额，**避免重复计费**。
+A turn can contain several steps (tool round-trips) and each step has an assistant message, but the conversation footer only hangs off the **closing** one. The plugin likewise attributes the whole turn's cost to the turn's last assistant message with an id; intermediate steps show no amount, so nothing is billed twice.
 
-如果该轮的事件窗口不完整（例如历史被截断、轮次还在进行中），插件不显示金额而不是显示
-一个错数。`deriveTurnTokenUsage` 本身对此很严格：任何缺失的生命周期边界、不完整用量或
-自相矛盾的总量，整轮结果都判为不可用。
+If the turn's event window is incomplete — history truncated, turn still running — the plugin shows nothing rather than a wrong number. `deriveTurnTokenUsage` is strict about this by design: any missing lifecycle boundary, incomplete usage or self-contradictory total makes the whole turn unavailable.
 
-## 数据来源
+## Where the data comes from
 
-插件只读客户端已有的事件窗口，不额外发网络请求：
+The plugin only reads the event window the client already has. No extra network requests:
 
 ```js
 ctx.sessions.binding(sessionId).eventSource   // { getSnapshot(), subscribe() }
 ```
 
-`eventSource` 是客户端 Session 上「连续历史 + 实时尾部」的可观察窗口，交给插槽的
-`hooks` 后由框架绑成 `useEvents` 选择器钩子。拿到事件后按 `turn/start … turn/end`
-切段，折叠用量，再用 `event.data.message.id`（即插槽给的 `messageId`）对上号。
+`eventSource` is the client Session's observable "contiguous history plus live tail" window. Handed to the slot as a bare `hooks` source, the framework binds it into a `useEvents` selector hook. The plugin then slices events by `turn/start … turn/end`, folds the usage, and matches it up by `event.data.message.id` — the `messageId` the slot supplies.
 
-**为什么内联了折叠算法**：逐轮用量折叠 `deriveTurnTokenUsage` 由
-`@deepseek-ai/dsh-token-meter` 提供，该包虽然导出浏览器安全的 `./client`，却没有
-`dsh.client` 声明，不是 boot-graph 里的行，插件的浏览器半边无法 `require` 它。
-因此 `lib/client.js` 里逐字移植了 0.2.0-rc.2 的实现，两者算法必须保持一致。
+**Why the fold is inlined**: `deriveTurnTokenUsage` comes from `@deepseek-ai/dsh-token-meter`. That package does export a browser-safe `./client` entry, but it declares no `dsh.client`, so it is not a row in the boot graph and a plugin's browser half cannot `require` it. `lib/client.js` therefore carries a verbatim port of the 0.2.0-rc.2 implementation; the two must stay in step.
 
-## 文件
+## Files
 
-| 文件 | 作用 |
+| File | Role |
 |---|---|
-| `package.json` | 声明 `dsh.bundle`（补丁层）与 `dsh.client`（浏览器半边） |
-| `cordis.patch.yml` | 给 Host 的 Loader 插入一行 `turn-cost` |
-| `lib/index.js` | Host 半边：空实现，只为让浏览器模块系统扫描到本包 |
-| `lib/client.js` | 浏览器半边：价格表 + 用量折叠 + 页脚金额标签 |
-| `tests/client.test.mjs` | 桩 React 单元测试（23 项）：模块包裹、注册、事件折叠、渲染、去重计费 |
-| `tests/pricing.test.mjs` | 价格模型与金额格式（15 项） |
+| `package.json` | declares `dsh.bundle` (a patch layer) and `dsh.client` (a browser half) |
+| `cordis.patch.yml` | inserts one `turn-cost` row into the Host Loader |
+| `lib/index.js` | host half: an empty `apply`, present only so the browser module system finds the package |
+| `lib/client.js` | browser half: price table, usage fold, footer amount, summary, danmaku, history panel |
+| `tests/client.test.mjs` | 126 stub-React checks: module wrapper, all five slot registrations, event folding, peak-boundary pricing, tiers, cache marker, step breakdown, budget, ledger de-duplication, click-to-enlarge, danmaku, history panel |
+| `tests/pricing.test.mjs` | 15 checks on the price model and amount formatting |
 
-跑测试（用 DSH 自带的 node）：
+Run the tests (no dependencies, Node 18+; the Node bundled with DSH works too):
 
-```powershell
-$env:DSH_DESKTOP_NODE_EXECUTABLE="D:\deepseek\DeepSeek Harness.exe"
-& "D:\deepseek\resources\runtime\bin\node.cmd" "<仓库路径>/packages/dsh-turn-cost\tests\pricing.test.mjs"
-& "D:\deepseek\resources\runtime\bin\node.cmd" "<仓库路径>/packages/dsh-turn-cost\tests\client.test.mjs"
+```bash
+node tests/pricing.test.mjs
+node tests/client.test.mjs
 ```
 
-## 已知限制
+## Known limitations
 
-- **按 token 单价估算，不是账单**。平台实际按自己的计量扣费，高峰/空闲与法定节假日的
-  判定、以及价格调整，都可能让这里的数字与真实扣费有出入；想要真实扣费请对照
-  「设置 → 账号与余额」的余额变化（或配合 `dsh-balance-badge`）。
-- **只看得到已结算的轮次**：一轮还在跑时没有金额，结束后才出现。
-- **事件窗口之外的旧消息**没有金额。
-- 法定节假日按空闲价还是高峰价，插件只能按星期与小时猜（偏保守）。
+- **These are estimates from token prices, not a bill.** The platform meters and charges on its own terms; peak/off-peak boundaries, public holidays and price changes can all make these numbers differ from what you are actually charged. For the real figure, watch the balance in **Settings → Account** (or pair this with `dsh-balance-badge`).
+- **Only settled turns are priced** — a running turn shows nothing until it finishes.
+- **Messages outside the loaded event window** have no amount.
+- Whether a public holiday should be priced as off-peak or peak, the plugin can only guess from weekday and hour (conservatively).
 
-## 安装 / 卸载
+## Install / remove
 
 ```powershell
-# 安装
-& "D:\deepseek\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add "<仓库路径>/packages/dsh-turn-cost"
+# install (<repo> is the absolute path you cloned into)
+dsh plugin --profile desktop add "<repo>\packages\dsh-turn-cost"
 
-# 卸载
-& "D:\deepseek\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop remove dsh-turn-cost
+# remove
+dsh plugin --profile desktop remove dsh-turn-cost
 ```
 
-本目录以 `link:` 方式装进 `~/.dsh/profiles/desktop`，**移动目录会让插件失效**。
-运行中的应用会自动重新组合配置，改完文件等几秒即可生效，不需要重启。
+This directory installs into `~/.dsh/profiles/desktop` as a `link:`, so **moving it breaks the plugin**.
+
+After installing or removing, let Harness recompose: restart the app, or toggle this plugin once on the in-app **Plugins** page. (A running app does not reliably reload when profile files change from outside — in practice, sometimes it does and sometimes it doesn't.)
