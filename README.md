@@ -1,92 +1,98 @@
-# DSH 花费插件
+# DSH Cost Plugins
 
-两个给 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) 桌面版用的**客户端插件**，
-一个看余额，一个看每一轮花了多少钱。
+English | [中文](README.zh-CN.md)
 
-| 插件 | 做什么 |
+Two client plugins for [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) that put the money where you can actually see it: your account balance in the sidebar, and what each answer really cost.
+
+Agentic sessions burn tokens quietly. A long coding turn can cost a hundred times a short chat turn, and nothing in the UI tells you which is which — until the balance is gone. These two plugins fix that.
+
+| Plugin | What it does |
 |---|---|
-| [`dsh-balance-badge`](packages/dsh-balance-badge) | 侧边栏底部常驻显示 DeepSeek 账户余额（充值 / 赠金），点一下刷新 |
-| [`dsh-turn-cost`](packages/dsh-turn-cost) | 每条回答花了多少钱：页脚金额与分级配色、缓存命中提示、分步拆解、会话/今日汇总、日预算、好贵弹幕、花费历史面板 |
+| [`dsh-balance-badge`](packages/dsh-balance-badge) | Always-visible DeepSeek account balance (topped-up + granted) at the foot of the sidebar; click to refresh |
+| [`dsh-turn-cost`](packages/dsh-turn-cost) | Per-answer cost: footer amount with cost tiers, cache-hit warnings, per-step breakdown, session/today totals, a daily budget, a "so expensive" danmaku barrage, and a spend-history panel |
 
-两个插件互相独立，可以只装一个。
+They are independent — install either one.
 
-## 长什么样
+## What it looks like
 
-`dsh-turn-cost` 在每条回答的页脚加一枚金额标签，紧挨着 DSH 自带的「本轮用量」：
-
-```
-… 回答正文 …
-
-        花费 ¥1.02   [ 本轮用量 51.9K tok ]   14:32
-```
-
-悬停展开明细：四档 token、输入/输出各自的金额、实际模型与单价档位、本会话中位数与倍数、
-缓存命中率、以及**按花费排序的分步拆解**（`第 2 步 ¥0.0520 · read`）。
-
-输入框下方单独一行汇总（字号比 DSH 那行统计小一档）：
+`dsh-turn-cost` adds an amount to each answer's footer, right next to Harness's own turn-usage pill:
 
 ```
-本次会话 ¥3.40（6 轮） · 今日 ¥3.40 · 近 7 天 ¥12.40 · 缓存命中 99.7%
-  · 上下文 243.0k · 下一轮预计 ¥0.14~1.02 · 还能跑约 35 轮
+… answer …
+
+        Cost ¥1.02   [ turn usage 51.9K tok ]   14:32
 ```
 
-单轮花到 ¥1 以上，屏幕上会飞过一整屏弹幕；左侧栏还多一个柱状图图标，点开是花费历史（可按天 /
-按会话查看，导出 CSV）。
+Hover for the full breakdown: the four token buckets, input vs output money, the actual model and price tier, where this turn sits against the session median, the cache hit rate, and **cost by step, dearest first** (`Step 2 ¥0.0520 · read`).
 
-细节见各插件自己的 README。
+Below the composer, on its own line and one step smaller than Harness's stats row:
 
-## 环境要求
+```
+This session ¥3.40 (6 turns) · Today ¥3.40 · Last 7 days ¥12.40 · cache hit 99.7%
+  · context 243.0k · next turn est. ¥0.14~1.02 · about 35 turns left
+```
 
-- DeepSeek Harness 桌面版（在 `0.2.0-rc.2` 上开发与验证）
-- 想用余额与「还能跑约 N 轮」，需要先在 DSH 里登录 DeepSeek 账号
-  （设置 → 账号与余额；余额走的是平台账号，不是 API Key）
+Cross ¥1 in a single turn and a full-screen danmaku barrage flies across the window — more expensive turns get more of it, a new personal record gets its own copy, and a 30-second cooldown keeps it from becoming wallpaper.
 
-## 安装
+The sidebar also gains a bar-chart icon that opens a spend-history page: by day and by session, with CSV export.
 
-插件以 `link:` 方式装进 DSH 的 profile，所以**先克隆到一个不会再移动的位置**：
+## Why you can trust the numbers
+
+- Cost is computed from the **usage the provider itself reports** in the session log — not from a character-count estimate.
+- Input and output are priced separately, with the cache-hit / cache-miss split that dominates real bills (a miss costs 50× a hit at off-peak `deepseek-flash` rates).
+- A turn that crosses the peak/off-peak boundary is priced **per step**, not smeared across whichever rate the last message happened to land in.
+- Incomplete evidence — a truncated event window, a turn still running, retries that don't reconcile — renders **nothing** instead of a wrong number.
+- Colour is never the only signal: the alert tier also goes bold, and every state carries a full `aria-label`.
+
+## Requirements
+
+- DeepSeek Harness Desktop (developed and verified on `0.2.0-rc.2`)
+- Sign in to a DeepSeek account inside Harness for the balance badge and the "turns left" figure (Settings → Account). The balance comes from the platform account, not from an API key.
+
+## Install
+
+The plugins install into a DSH profile as `link:` dependencies, so **clone somewhere you won't move it afterwards**:
 
 ```powershell
-git clone https://github.com/<你的用户名>/dsh-cost-plugins.git "$env:USERPROFILE\dsh-cost-plugins"
+git clone https://github.com/weiiiiis/dsh-cost-plugins.git "$env:USERPROFILE\dsh-cost-plugins"
 ```
 
-然后逐个装（`<仓库路径>` 换成上面克隆到的绝对路径）：
+Then add them one at a time (`<repo>` is the absolute path you just cloned into):
 
 ```powershell
-dsh plugin --profile desktop add "<仓库路径>\packages\dsh-turn-cost"
-dsh plugin --profile desktop add "<仓库路径>\packages\dsh-balance-badge"
+dsh plugin --profile desktop add "<repo>\packages\dsh-turn-cost"
+dsh plugin --profile desktop add "<repo>\packages\dsh-balance-badge"
 ```
 
-装完让 DSH 重新组合一次配置：重启应用，或在应用内「插件」页面里把新插件开关一次。
-运行中的应用一般几秒内就会自己重新组合。
+Let Harness recompose afterwards: restart the app, or toggle each plugin once on the in-app **Plugins** page. A running app usually picks the change up on its own within seconds.
 
-卸载：
+Remove:
 
 ```powershell
 dsh plugin --profile desktop remove dsh-turn-cost
 dsh plugin --profile desktop remove dsh-balance-badge
 ```
 
-> `desktop` 这个 profile 由桌面应用独占管理，**必须用桌面版装的 `dsh` 命令**；
-> 从 npm 装的 CLI 会拒绝操作它。另外因为它用的是软链，装完之后**不要移动仓库目录**。
+> The `desktop` profile is owned exclusively by the desktop application, so you must use the `dsh` launcher that the desktop install provides — an npm-installed CLI refuses to touch that profile. And because the install is a symlink, **do not move the repo directory** once installed.
 
-## 仓库结构
+## Repository layout
 
 ```
 packages/
-  dsh-balance-badge/     余额徽章
-    package.json         声明 dsh.bundle（补丁层）与 dsh.client（浏览器半边）
-    cordis.patch.yml     给 Host 的 Loader 插入一行
-    lib/index.js         Host 半边：空实现，只为让浏览器模块系统扫描到本包
-    lib/client.js        浏览器半边：界面本体（手写，非构建产物）
-    tests/               桩 React 的单元测试
-  dsh-turn-cost/         每条回答花费
-    （同样的结构，tests/ 里多一份价格模型测试）
-docs/                    开发时整理的 DSH 插件与插槽机制参考文档
+  dsh-balance-badge/     sidebar balance badge
+    package.json         declares dsh.bundle (a patch layer) and dsh.client (a browser half)
+    cordis.patch.yml     inserts one row into the Host Loader
+    lib/index.js         host half: empty apply, it only exists so the browser module system finds the package
+    lib/client.js        browser half: the actual UI (hand-written, not a build artifact)
+    tests/               unit tests against a stub React
+  dsh-turn-cost/         per-answer cost
+    (same shape, plus a pricing-model test suite)
+docs/                    reference notes on the DSH plugin and slot systems
 ```
 
-## 跑测试
+## Tests
 
-不需要装任何依赖，用 Node 直接跑（Node 18+ 即可）：
+No dependencies to install — run them with plain Node (18+):
 
 ```bash
 node packages/dsh-turn-cost/tests/pricing.test.mjs
@@ -94,43 +100,37 @@ node packages/dsh-turn-cost/tests/client.test.mjs
 node packages/dsh-balance-badge/tests/client.test.mjs
 ```
 
-三个文件分别覆盖价格换算、`dsh-turn-cost` 的完整客户端逻辑（126 项）、
-`dsh-balance-badge` 的渲染（19 项）。
+The three files cover price arithmetic, the full `dsh-turn-cost` client (126 checks) and the `dsh-balance-badge` rendering (19 checks). CI runs the same three on every push.
 
-## 原理（简述）
+## How it works
 
-DSH 的插件就是一个普通的 npm 包，只要：
+A DSH plugin is an ordinary npm package that:
 
-1. `package.json` 里用 `dsh.bundle.patch` 声明一个补丁层，`dsh.client.platform: "web"` 声明有浏览器半边；
-2. 补丁层往 Host 的 Loader 里插一行；
-3. 浏览器半边导出 `apply(ctx)` / `inject`。
+1. declares a patch layer with `dsh.bundle.patch` and a browser half with `dsh.client.platform: "web"`;
+2. uses that patch layer to insert one row into the Host Loader;
+3. exports `apply(ctx)` / `inject` from the browser half.
 
-界面通过 **插槽** 挂进 DSH 已有的位置，这两个插件用到的是：
+The UI hangs off **slots** that Harness already declares. These plugins use:
 
-| 插槽 | 用途 |
+| Slot | Used for |
 |---|---|
-| `sidebar.footer.action` | 侧边栏底部（余额徽章） |
-| `conversation.chat.assistant-actions` | 每条回答的页脚（花费标签） |
-| `conversation.composer.dock` | 输入框下方的统计条（汇总） |
-| `shell.overlay` | 全屏顶层浮层（弹幕） |
-| `main` + `sidebar.panellist` | 全局面板（花费历史页） |
+| `sidebar.footer.action` | the balance badge |
+| `conversation.chat.assistant-actions` | the per-answer cost pill |
+| `conversation.composer.dock` | the summary line under the composer |
+| `shell.overlay` | the full-screen danmaku layer |
+| `main` + `sidebar.panellist` | the spend-history page and its sidebar icon |
 
-数据全部来自客户端已有的东西，插件不额外发请求（读余额那一处除外）：
-花费由该轮会话事件里模型自己上报的 `usage` 折叠而来；余额走 DSH 的
-`ctx.remote.account.getBalance()`。
+Everything is derived from data the client already has — no extra network requests except the balance read. Cost is folded from the `usage` the model reports in the turn's session events; the balance comes from Harness's own `ctx.remote.account.getBalance()`.
 
-## 已知限制
+## Known limitations
 
-- **金额是按 token 单价估算的，不是账单。** 平台按自己的计量扣费，高峰/空闲与法定节假日的
-  判定、以及价格调整，都可能让这里的数字与真实扣费有出入。单价写在各插件的 `lib/client.js` 顶部，
-  价格变了改常量即可。
-- 中国法定节假日无法离线判断，插件只按星期与小时判高峰，节假日里那几个小时会按高峰价显示
-  （偏保守，不会少算）。
-- 只看得到**已结算**的轮次：一轮还在跑时没有金额，结束后才出现。
-- 会话事件窗口之外的旧消息没有金额。
-- 「推理 token」这一档在当前适配器下拿不到（实测几百条消息里一次都没上报），所以明细里通常没有那一行。
-- DSH 升级后插槽或事件结构可能变化。这些插件是照着 `0.2.0-rc.2` 写的，仅供参考。
+- **The amounts are estimates from token prices, not a bill.** The platform meters and charges on its own terms; peak/off-peak boundaries, public holidays and price changes can all make these numbers differ from what you are actually charged. Prices live in a `PRICING` constant at the top of each plugin's `lib/client.js` — edit it when they change.
+- Chinese public holidays can't be determined offline, so the peak/off-peak test uses weekday and hour only. Hours inside a public holiday are shown at the peak rate (conservative — it never under-counts).
+- Only **settled** turns are priced. A turn that is still running shows nothing until it finishes.
+- Messages outside the loaded event window have no amount.
+- The reasoning-token bucket isn't available from the current adapter (not once in several hundred real messages), so that line is usually absent.
+- DSH slot names and event shapes may change between releases. These plugins were written against `0.2.0-rc.2`.
 
-## 许可
+## License
 
 [MIT](LICENSE)

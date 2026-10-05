@@ -2,7 +2,7 @@
   "name": "dsh-cost-plugins",
   "version": "1.0.0",
   "private": true,
-  "description": "DeepSeek Harness 的花费插件：侧边栏余额徽章 + 每条回答花费",
+  "description": "Cost plugins for DeepSeek Harness: a sidebar balance badge and a per-answer cost readout",
   "type": "module",
   "workspaces": [
     "packages/*"
