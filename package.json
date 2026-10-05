@@ -1,0 +1,14 @@
+{
+  "name": "dsh-cost-plugins",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DeepSeek Harness 的花费插件：侧边栏余额徽章 + 每条回答花费",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "node packages/dsh-turn-cost/tests/pricing.test.mjs && node packages/dsh-turn-cost/tests/client.test.mjs && node packages/dsh-balance-badge/tests/client.test.mjs"
+  },
+  "license": "MIT"
+}

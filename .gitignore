@@ -1,0 +1,18 @@
+# 依赖（这两个插件本身零依赖，留在这里是给以后可能加的测试工具用）
+node_modules/
+
+# DSH 在 profile 里留下的运行记录
+.plugin-manager/
+pnpm-lock.yaml
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.log
+*.tmp
+
+# 调试时可能落下的东西
+*.local
